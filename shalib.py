@@ -45,39 +45,70 @@ def CLShift(inval, bits, width=32):
 def str2hex (txt, width):
 	hextext = []
 	for i in range(width):
-		if __debug__:
-			print i
-			print txt[i]
+#		if __debug__:
+#			print i
+#			print txt[i]
 		hextext.append(binascii.hexlify(txt[i]))
-		if __debug__:
-			print hextext[i]
+#		if __debug__:
+#			print hextext[i]
 	return hextext
 
 def XORmat(m1,m2):
 	outmat = []	
+	if m1[0][0].find("0x") >= 0:
+		m1 = Delete_0x(m1)
+	if m2[0][0].find("0x") >= 0:
+		m2 = Delete_0x(m2)
 	for i in range(len(m1)):
 		temp = []
 		for j in range(len(m2[0])):
+#			if __debug__:
+#				print "m1: {}".format(m1[i][j])
+#				print "m2: {}\n".format(m2[i][j])
 			temp.append(str(hex(int(m1[i][j], 16) ^ int(m2[i][j], 16))))
 		outmat.append(temp)
-	if __debug__:
-		print "Temp: {}".format(outmat)
+#	if __debug__:
+#		print "Temp: {}".format(outmat)
 
 	return outmat
 
 def sbox(m):
 	outmat = []
 	print ("SBox_in: {}".format(m))
-	m = Delete_0x(m)
-	if __debug__:
-		print ("New_M: {}".format(m))
-	for i in range(len(m)):
-		temp = []
-		for j in range(len(m[0])):
-			print "P1: {}".format(int(int(m[i][j], 16) / 10))
-			print "P2: {}".format(int(m[i][j], 16) % 10)
-			temp.append(sbox_vals[int((int(m[i][j], 16) >> 4) & 0x0f)][int(m[i][j], 16) & 0x0f])
-		outmat.append(temp)
+#	print "{}".format(range(len(m)))
+#	print "{}".format(range(len(m[0])))
+#	print "{}".format((len(m)))
+#	print "{}".format((len(m[0])))
+
+	# 2D List
+	if isinstance(m[0], list):
+		if m[0][0].find("0x") >= 0:
+			m = Delete_0x(m)
+		if __debug__:
+			print "2D"
+			print ("New_M: {}".format(m))
+#			print "{}".format(range(len(m)))
+#			print "{}".format(range(len(m[0])))
+			print "{}".format((len(m)))
+			print "{}".format((len(m[0])))
+
+		for i in range(len(m)):
+			temp = []
+			for j in range(len(m[0])):
+#				print "P1: {}".format(int(int(m[i][j], 16) >> 4) & 0x0f)
+#				print "P2: {}".format(int(m[i][j], 16) & 0x0f)
+				temp.append(sbox_vals[int((int(m[i][j], 16) >> 4) & 0x0f)][int(m[i][j], 16) & 0x0f])
+			outmat.append(temp)
+	else:
+		if __debug__:
+			print "1D"
+		if m[0].find("0x") >= 0:
+			m = Delete_0x(m)
+		outmat.append(sbox_vals[int((int(m[0], 16) >> 4) & 0x0f)][int(m[0], 16) & 0x0f])
+		outmat.append(sbox_vals[int((int(m[1], 16) >> 4) & 0x0f)][int(m[1], 16) & 0x0f])
+		outmat.append(sbox_vals[int((int(m[2], 16) >> 4) & 0x0f)][int(m[2], 16) & 0x0f])
+		outmat.append(sbox_vals[int((int(m[3], 16) >> 4) & 0x0f)][int(m[3], 16) & 0x0f])
+#		return outmat
 	if __debug__:
 		print ("SBox: {}".format(outmat))
 	return outmat
@@ -117,43 +148,58 @@ def mixCol(m):
 				elif mixCol_vals[i][k] == 2:
 					temp = int(m[k][j], 16) << 1
 					if int(m[k][j], 16) >= 0x80:
-						print ("XOR")
 						temp = temp ^ 0x1B
 				elif mixCol_vals[i][k] == 3:
 					temp = (int(m[k][j], 16) << 1) ^ int(m[k][j], 16)
 					if int(m[k][j], 16) >= 0x80:
-						print ("XOR")
 						temp = temp ^ 0x1B
 				else:
 					print ("Lookup Error")
-				if __debug__:
-					print ("colVal: {}".format(mixCol_vals[i][k]))
-					print ("In: {}".format(m[k][j]))
-					print ("Temp: {0:b}".format(temp))
+#				if __debug__:
+#					print ("colVal: {}".format(mixCol_vals[i][k]))
+#					print ("In: {}".format(m[k][j]))
+#					print ("Temp: {0:b}".format(temp))
 				tempval = tempval ^ (temp & 0xFF)
-			if __debug__:
-				print ("TempVal: {}\n".format(hex(tempval)))
+#			if __debug__:
+#				print ("TempVal: {}\n".format(hex(tempval)))
 			outmat[i][j] = str(hex(tempval))
 	if __debug__:
 		print ("MixCol: {}".format(outmat))
+	return outmat
 
-def aes(key, plaintext, width=16):
-	hexkey = str2hex(key, width)
-	plaintexthex = str2hex(plaintext, width)
-	statematrix = [plaintexthex[0::4],plaintexthex[1::4],plaintexthex[2::4],plaintexthex[3::4]]
-	roundkey_0 = [hexkey[0::4],hexkey[1::4],hexkey[2::4],hexkey[3::4]]
+def transposeList(l):
+	outmat = [[0 for col in range(len(l[0]))] for row in range(len(l))]
+	for i in range(len(l)):
+		for j in range(len(l[0])):
+			outmat[j][i] = l[i][j]
+
+	return outmat
+
+def aes_round(roundkey_0, statematrix, round_num, round_const, width=16):
+#	statematrix = [plaintexthex[0::4],plaintexthex[1::4],plaintexthex[2::4],plaintexthex[3::4]]
+#	roundkey_0 = [hexkey[0::4],hexkey[1::4],hexkey[2::4],hexkey[3::4]]
 	if __debug__:
-		print "Key: {}".format(hexkey)
-		print "PlainText: {}".format(plaintexthex)
+#		print "Key: {}".format(hexkey)
+#		print "PlainText: {}".format(plaintexthex)
 		print "State Matrix: {}".format(statematrix)
 		print "RoundKey: {}".format(roundkey_0)
-	statematrix = XORmat(statematrix, roundkey_0)
+		print "{}".format(statematrix[0:4][0])
+		print "{}".format(statematrix[0][0:4])
+#	w = [statematrix[0:4][0], statematrix[0:4][1], statematrix[0:4][2], statematrix[0:4][3]]
+	w = transposeList(roundkey_0)
+	if __debug__:
+		print "W: {}".format(w)
+	if round_num == 1:
+		statematrix = XORmat(statematrix, roundkey_0)
 	if __debug__:
 		print "NewStateMatrix: {}".format(statematrix)
 	statematrix = sbox(statematrix)
 	statematrix = ShiftRow(statematrix)
-	statematrix = mixCol(statematrix)
-	w = [hexkey[0:4], hexkey[4:8], hexkey[8:12], hexkey[12:16]]
+	if round_num < 10:
+		statematrix = mixCol(statematrix)
+	if __debug__:
+		print "NextStateMatrix: {}".format(statematrix)
+#	w = [hexkey[0:4], hexkey[4:8], hexkey[8:12], hexkey[12:16]]
 	if __debug__:
 		print "W {}".format(w)
 		print "W0: {}".format(w[0])
@@ -163,21 +209,27 @@ def aes(key, plaintext, width=16):
 	gw3 = [w[3][1], w[3][2], w[3][3], w[3][0]]
 	if __debug__:
 		print "GW3: {}".format(gw3)
-		print "GW3,0: {}".format(int(gw3[0]))
-		print ((int(w[3][0]) >> 4) & 0x0F)
-	gw3[0] = (sbox_vals[int(int(gw3[0]) / 10)][int(gw3[0]) % 10])
-	gw3[1] = (sbox_vals[int(int(gw3[1]) / 10)][int(gw3[1]) % 10])
-	gw3[2] = (sbox_vals[int(int(gw3[2]) / 10)][int(gw3[2]) % 10])
-	gw3[3] = (sbox_vals[int(int(gw3[3]) / 10)][int(gw3[3]) % 10])
+		print "GW3,0: {}".format(int(gw3[0], 16))
+		print ((int(w[3][0], 16) >> 4) & 0x0F)
+#	gw3[0] = (sbox_vals[int(int(gw3[0], 16) / 10)][int(gw3[0], 16) % 10])
+#	gw3[1] = (sbox_vals[int(int(gw3[1], 16) / 10)][int(gw3[1], 16) % 10])
+#	gw3[2] = (sbox_vals[int(int(gw3[2], 16) / 10)][int(gw3[2], 16) % 10])
+#	gw3[3] = (sbox_vals[int(int(gw3[3], 16) / 10)][int(gw3[3], 16) % 10])
+	gw3 = sbox(gw3);
 	if __debug__:
 		print "GW3: {}".format(gw3)
-	round_const = [1,0,0,0]
+	if round_num == 1:
+		round_const = [1,0,0,0]
+	elif round_const[0] < 0x80:
+		round_const[0] = round_const[0] << 1
+	else:
+		round_const[0] = ((round_const[0] << 1) ^ 0x1B) & 0xFF
 	print (int(w[3][0], 16))
-	print (int(round_const[0]))
+	print "RoundConst: {}".format(hex(round_const[0]))
 	print (hex(int(w[3][0], 16) + int(round_const[0])))
 	hextest = str(hex(int(w[3][0], 16) + int(round_const[0])))
 	print (hextest.replace("0x",""))
-	gw3 = [str(hex(int(gw3[0], 16) - round_const[0])), str(hex(int(gw3[1], 16) - round_const[1])), str(hex(int(gw3[2], 16) - round_const[2])), str(hex(int(gw3[3], 16) - round_const[3]))]
+	gw3 = [str(hex((int(gw3[0], 16) ^ round_const[0]) & 0xFF)), str(hex(int(gw3[1], 16) - round_const[1])), str(hex(int(gw3[2], 16) - round_const[2])), str(hex(int(gw3[3], 16) - round_const[3]))]
 	gw3[0] = gw3[0].replace("0x","")
 	gw3[1] = gw3[1].replace("0x","")
 	gw3[2] = gw3[2].replace("0x","")
@@ -214,5 +266,17 @@ def aes(key, plaintext, width=16):
 		print "W7: {}".format(w7)
 	roundkey_1 = [w4, w5,  w6, w7]
 	if __debug__:
-		print "RoundKey_1: {}".format(roundkey_1)
-#	enc_text = 
+		print "XRoundKey_1: {}".format(roundkey_1)
+		print "XStateMat: {}".format(statematrix)
+	statematrix = XORmat(transposeList(roundkey_1), statematrix)
+	if __debug__:
+		print "FinalRoundKey_1: {}".format(roundkey_1)
+		print "FinalStateMat: {}".format(statematrix)
+	return transposeList(roundkey_1), statematrix, round_const
+
+def aes(keytext, statetext):
+	round_const = 0
+	for i in range(10):
+		print "\n\nRound: {}\n\n".format(i)
+		keytext, statetext, round_const = aes_round(keytext, statetext, i+1, round_const)
+	return transposeList(statetext)
