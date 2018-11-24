@@ -167,19 +167,16 @@ def checkDimension(l):
 		return 1
 
 def calcRCon(rcon):
-	if rcon == 1:
-		return rcon
-	elif rcon < 0x80:
+	if rcon < 0x80:
 		rcon = rcon << 1
 	else:
-		rcon = ((rcon << 1) ^ 0x1B) & 0xFF
-	
+		rcon = ((rcon << 1) ^ 0x1B) & 0xFF	
+	return rcon
 
 def aes_round(roundkey, statematrix, round_num, round_const, width=16):
 	w = transposeList(roundkey)
 	statematrix = sbox(statematrix)
 	statematrix = ShiftRow(statematrix)
-	calcRCon(round_const)
 	if round_num < 10:
 		statematrix = mixCol(statematrix)
 	gw3 = sbox(ShiftRow(w[3]))
@@ -189,14 +186,38 @@ def aes_round(roundkey, statematrix, round_num, round_const, width=16):
 	w5 = Delete_0x(XORmat(w[1], w4))
 	w6 = Delete_0x(XORmat(w[2], w5))
 	w7 = Delete_0x(XORmat(w[3], w6))
+	round_const = calcRCon(round_const)
 	roundkey = [w4, w5,  w6, w7]
 	statematrix = XORmat(transposeList(roundkey), statematrix)
 	return transposeList(roundkey), statematrix, round_const
 
-def aes(keytext, statetext):
-	round_const = 1
-	statetext = XORmat(statetext, keytext)
-	for i in range(10):
-		print "Round: {}\n".format(i)
-		keytext, statetext, round_const = aes_round(keytext, statetext, i+1, round_const)
-	return transposeList(statetext)
+def inv_sbox(l):
+	outmat = []
+
+	if checkDimension(l) == 1:
+		for i in range(len(l)):
+#			for j in range(len(sbox_vals)):
+#				for k in range(len(sbox_vals[0])):
+#					if sbox_vals[i][j] == l[i]:
+#						ind2hex(i,j)
+			something = [(index, row.index(l[i])) for index, row in enumerate(sbox_vals) if val in row]
+			print "Something = {}".format(something)
+
+
+def aes_d_round(rounkey, statematrix, round_num, round_const):
+	w = roundkey
+	gw3 = ShiftRow(w[3])
+	inv_sbox(gw3)
+
+def aes(keytext, statetext, mode="E"):
+	if mode == "E":
+		round_const = 1
+		statetext = XORmat(statetext, keytext)
+		for i in range(10):
+			print "Round: {}\n".format(i)
+			keytext, statetext, round_const = aes_round(keytext, statetext, i+1, round_const)
+		return transposeList(statetext)
+	elif mode == "D":
+		temp = 1
+	else:
+		print "Error: Invalid Mode"
