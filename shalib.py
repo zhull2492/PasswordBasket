@@ -26,6 +26,7 @@ sbox_vals = [["63","7c","77","7b","f2","6b","6f","c5","30","01","67","2b","fe","
 	["8c","a1","89","0d","bf","e6","42","68","41","99","2d","0f","b0","54","bb","16"]]
 
 mixCol_vals = [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]]
+invMixCol_vals = [[14, 11, 13, 9], [9, 14, 11, 13], [13, 9, 14, 11], [11, 13, 9, 14]]
 
 def CRShift(inval, bits, width=32):
 	mask = 0xFFFFFFFF
@@ -61,6 +62,13 @@ def hex2str (hexlist):
 			s+=temp
 			
 	return s
+
+def hex2ascii (txt):
+	outstr = ""
+	for i in range(len(txt)):
+		for j in range(len(txt[0])):
+			outstr+=binascii.unhexlify(txt[i][j])
+	return outstr
 
 def XORmat(m1,m2):
 	outmat = []
@@ -98,6 +106,28 @@ def sbox(m):
 			outmat.append(sbox_vals[int((int(m[i], 16) >> 4) & 0x0f)][int(m[i], 16) & 0x0f])
 	return outmat
 
+def inv_sbox(l):
+	outmat = []
+
+	print "In: {}".format(l)
+	l = Delete_0x(l)
+
+	if checkDimension(l) == 1:
+		temp = [('0'*(2-len(x))) + x for x in l]
+		for i in range(len(temp)):
+			outmat.append(ind2hex([(index, row.index(temp[i])) for index, row in enumerate(sbox_vals) if temp[i] in row]))
+	else:
+		for i in range(len(l)):
+			mattemp = []
+			temp = [('0'*(2-len(x))) + x for x in l[i]]
+			print "Temp: {}".format(temp)
+			for j in range(len(temp)):
+				mattemp.append(ind2hex([(index, row.index(temp[j])) for index, row in enumerate(sbox_vals) if temp[j] in row]))
+			outmat.append(mattemp)
+
+	print "Out: {}".format(outmat)
+	return outmat
+
 def Delete_0x(m):
 	outmat = []
 
@@ -119,14 +149,28 @@ def Delete_0x(m):
 			outmat.append(temp)
 	return outmat
 
-def ShiftRow(m):
+def ShiftRow_L(m):
+
+	print "ShiftRow_L: {}".format(m)
 
 	if checkDimension(m) > 1:
 		for i in range(1, len(m)):
 			for j in range(0, i):
-				m[i] = ShiftRow(m[i])
+				m[i] = ShiftRow_L(m[i])
 	else:
 		m = [m[1], m[2], m[3], m[0]]
+	return m
+
+def ShiftRow_R(m):
+
+	print "ShiftRow_R: {}".format(m)
+
+	if checkDimension(m) > 1:
+		for i in range(1, len(m)):
+			for j in range(0, i):
+				m[i] = ShiftRow_R(m[i])
+	else:
+		m = [m[3], m[0], m[1], m[2]]
 	return m
 
 def mixCol(m):
@@ -148,6 +192,26 @@ def mixCol(m):
 				else:
 					print ("Lookup Error")
 				tempval = tempval ^ (temp & 0xFF)
+			outmat[i][j] = str(hex(tempval))
+	return outmat
+
+def invMixCol (m):
+	outmat = [[0 for col in range(len(m[0]))] for row in range(len(m))]
+	for i in range(len(m)):
+		for j in range(len(m[0])):
+			tempval = 0
+			for k in range(len(m)):
+				if invMixCol_vals[i][k] == 9:
+					temp = (int(m[k][j], 16) << 3) ^ int(m[k][j], 16)
+				elif invMixCol_vals[i][k] == 11:
+					temp = (((int(m[k][j], 16) << 2) ^ int(m[k][j], 16)) << 1) ^ int(m[k][j], 16)
+				elif invMixCol_vals[i][k] == 13:
+					temp = ((int(m[k][j], 16) << 1) ^ int(m[k][j], 16) << 2) ^ int(m[k][j], 16)
+				elif invMixCol_vals[i][k] == 14:
+					temp = ((((int(m[k][j], 16) << 1) ^ int(m[k][j], 16)) << 1) ^ int(m[k][j], 16)) << 1
+				else:
+					print "Lookup Error"
+				tempval = tempval ^ (temp & 0xff)
 			outmat[i][j] = str(hex(tempval))
 	return outmat
 
@@ -173,13 +237,48 @@ def calcRCon(rcon):
 		rcon = ((rcon << 1) ^ 0x1B) & 0xFF	
 	return rcon
 
+def str2list(s):
+	outlist = []
+	print "String: {}".format(s)
+	for i in range(0, len(s), 2):
+		outlist.append(s[i:i+2])
+	print "Outlist: {}".format(outlist)
+	return outlist
+
+def ind2hex(ind):
+	s = ""
+	print "Ind: {}".format(ind)
+	s+=str(hex(ind[0][0]))
+	s+=str(hex(ind[0][1]))
+	s = s.replace("0x","")
+	return s
+
+def keyExpansion (keytext, rounds):
+	keymat = []
+	keymat.append(keytext)
+	round_const = 1
+	for i in range(rounds):
+		w = transposeList(keytext)
+		gw3 = sbox(ShiftRow_L(w[3]))
+		gw3[0] = str(hex((int(gw3[0], 16) ^ round_const) & 0xFF))
+		gw3 = Delete_0x(gw3)
+		w4 = Delete_0x(XORmat(w[0], gw3))
+		w5 = Delete_0x(XORmat(w[1], w4))
+		w6 = Delete_0x(XORmat(w[2], w5))
+		w7 = Delete_0x(XORmat(w[3], w6))
+		round_const = calcRCon(round_const)
+		keytext = [w4, w5,  w6, w7]
+		keymat.append(keytext)
+	print "KeyExpansion:\n{}".format(keymat)
+	return keymat	
+
 def aes_round(roundkey, statematrix, round_num, round_const, width=16):
 	w = transposeList(roundkey)
 	statematrix = sbox(statematrix)
-	statematrix = ShiftRow(statematrix)
+	statematrix = ShiftRow_L(statematrix)
 	if round_num < 10:
 		statematrix = mixCol(statematrix)
-	gw3 = sbox(ShiftRow(w[3]))
+	gw3 = sbox(ShiftRow_L(w[3]))
 	gw3[0] = str(hex((int(gw3[0], 16) ^ round_const) & 0xFF))
 	gw3 = Delete_0x(gw3)
 	w4 = Delete_0x(XORmat(w[0], gw3))
@@ -191,33 +290,53 @@ def aes_round(roundkey, statematrix, round_num, round_const, width=16):
 	statematrix = XORmat(transposeList(roundkey), statematrix)
 	return transposeList(roundkey), statematrix, round_const
 
-def inv_sbox(l):
-	outmat = []
-
-	if checkDimension(l) == 1:
-		for i in range(len(l)):
-#			for j in range(len(sbox_vals)):
-#				for k in range(len(sbox_vals[0])):
-#					if sbox_vals[i][j] == l[i]:
-#						ind2hex(i,j)
-			something = [(index, row.index(l[i])) for index, row in enumerate(sbox_vals) if val in row]
-			print "Something = {}".format(something)
-
-
-def aes_d_round(rounkey, statematrix, round_num, round_const):
-	w = roundkey
-	gw3 = ShiftRow(w[3])
-	inv_sbox(gw3)
+def aes_d_round(roundkey, statematrix, round_num, round_const):
+	print "StateMatS: {}".format(statematrix)
+	w = transposeList(roundkey)
+	print "W: {}".format(w)
+	print "W[3]: {}".format(w[3])
+	gw3 = ShiftRow_L(w[3])
+	print "W[3]: {}".format(gw3)
+	gw3 = inv_sbox(gw3)
+	print "W[3]: {}".format(gw3)
+	gw3[0] = str(hex((int(gw3[0], 16) ^ round_const) & 0xFF))
+	gw3 = Delete_0x(gw3)
+	w4 = Delete_0x(XORmat(w[0], gw3))
+	print "W4: {}".format(w4)
+	w5 = Delete_0x(XORmat(w[1], w4))
+	print "W5: {}".format(w5)
+	w6 = Delete_0x(XORmat(w[2], w5))
+	print "W6: {}".format(w6)
+	w7 = Delete_0x(XORmat(w[3], w6))
+	print "W7: {}".format(w7)
+	round_const = calcRCon(round_const)
+	roundkey = [w4, w5, w6, w7]
+	print "RKey: {}".format(roundkey)
+	print "StateMatF: {}".format(statematrix)
+	#statematrix = XORmat(transposeList(roundkey), statematrix)
+	statematrix = ShiftRow_R(statematrix)
+	statematrix = inv_sbox(statematrix)
+	if round_num < 10:
+		statematrix = invMixCol(statematrix)
+	statematrix = XORmat(transposeList(roundkey), statematrix)
+	return transposeList(roundkey), statematrix, round_const
 
 def aes(keytext, statetext, mode="E"):
+	round_const = 1
+	print "Key: {}".format(keytext)
+	mykeys = keyExpansion(keytext, 10)
 	if mode == "E":
-		round_const = 1
 		statetext = XORmat(statetext, keytext)
 		for i in range(10):
 			print "Round: {}\n".format(i)
 			keytext, statetext, round_const = aes_round(keytext, statetext, i+1, round_const)
 		return transposeList(statetext)
 	elif mode == "D":
-		temp = 1
+		print "SText: {}".format(statetext)
+		statetext = XORmat(statetext, keytext)
+		print "SText_AK: {}".format(statetext)
+		for i in range(10):
+			keytext, statetext, round_const = aes_d_round(keytext, statetext, i+1, round_const)
+		return transposeList(statetext)
 	else:
 		print "Error: Invalid Mode"
